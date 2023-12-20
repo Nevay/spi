@@ -1,0 +1,23 @@
+{
+    "name": "tbachert/spi",
+    "description": "Service provider loading facility",
+    "keywords": ["service provider"],
+    "type": "composer-plugin",
+    "license": "Apache-2.0",
+    "require": {
+        "php": "^8.1",
+        "composer-plugin-api": "^2.0"
+    },
+    "require-dev": {
+        "composer/composer": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Nevay\\SPI\\": "src/"
+        }
+    },
+    "extra": {
+        "class": "Nevay\\SPI\\Composer\\Plugin",
+        "plugin-optional": true
+    }
+}
