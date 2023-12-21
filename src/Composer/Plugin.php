@@ -27,34 +27,20 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
     }
 
     public function uninstall(Composer $composer, IOInterface $io): void {
-        // no-op
+        $filesystem = new Filesystem();
+        $vendorDir = $this->vendorDir($composer, $filesystem);
+        $filesystem->remove($vendorDir . '/composer/GeneratedServiceProviderData.php');
     }
 
     public function preAutoloadDump(Event $event): void {
-        $mappings = [];
-        $extra = $event->getComposer()->getPackage()->getExtra();
-        foreach ($extra['spi'] ?? [] as $interface => $providers) {
-            $mappings[$interface] ??= [];
-            $mappings[$interface] += array_combine($providers, $providers);
-        }
-        foreach ($event->getComposer()->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
-            $extra = $package->getExtra();
-            foreach ($extra['spi'] ?? [] as $interface => $providers) {
-                $providers = (array) $providers;
-                $mappings[$interface] ??= [];
-                $mappings[$interface] += array_combine($providers, $providers);
-            }
-        }
-
         $match = '';
-        foreach ($mappings as $interface => $providers) {
-            $match .= "\n            \\$interface::class => [";
+        foreach (self::serviceProviders($event->getComposer()) as $service => $providers) {
+            $match .= "\n            \\$service::class => [";
             foreach ($providers as $class) {
                 $match .= "\n                \\$class::class,";
             }
             $match .= "\n            ],";
         }
-
         $code = <<<PHP
             <?php declare(strict_types=1);
             namespace Nevay\SPI;
@@ -79,7 +65,7 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
             PHP;
 
         $filesystem = new Filesystem();
-        $vendorDir = $filesystem->normalizePath($event->getComposer()->getConfig()->get('vendor-dir'));
+        $vendorDir = $this->vendorDir($event->getComposer(), $filesystem);
         $filesystem->ensureDirectoryExists($vendorDir . '/composer');
         $filesystem->filePutContentsIfModified($vendorDir . '/composer/GeneratedServiceProviderData.php', $code);
 
@@ -87,5 +73,26 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
         $autoload = $package->getAutoload();
         $autoload['classmap'][] = $vendorDir . '/composer/GeneratedServiceProviderData.php';
         $package->setAutoload($autoload);
+    }
+
+    private function vendorDir(Composer $composer, Filesystem $filesystem): string {
+        return $filesystem->normalizePath($composer->getConfig()->get('vendor-dir'));
+    }
+
+    private function serviceProviders(Composer $composer): array {
+        $mappings = [];
+        foreach ($composer->getPackage()->getExtra()['spi'] ?? [] as $service => $providers) {
+            $mappings[$service] ??= [];
+            $mappings[$service] += array_combine($providers, $providers);
+        }
+        foreach ($composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
+            foreach ($package->getExtra()['spi'] ?? [] as $service => $providers) {
+                $providers = (array) $providers;
+                $mappings[$service] ??= [];
+                $mappings[$service] += array_combine($providers, $providers);
+            }
+        }
+
+        return $mappings;
     }
 }
