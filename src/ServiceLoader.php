@@ -62,6 +62,7 @@ final class ServiceLoader implements IteratorAggregate {
         }
 
         self::$mappings[$service] = $providers;
+        unset($providers);
         self::$mappings[$service][] = $provider;
     }
 
