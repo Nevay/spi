@@ -8,17 +8,21 @@ use function is_subclass_of;
 use function sprintf;
 
 /**
- * @template S
+ * @template-covariant S service type
  * @implements Iterator<class-string, S>
  *
  * @internal
  */
 final class ServiceLoaderIterator implements Iterator {
 
+    /** @var class-string<S> */
     private readonly string $service;
+    /** @var list<class-string> */
     private readonly array $providers;
+    /** @var list<S|false> */
     private array $cache;
 
+    /** @var int<0, max> */
     private int $index = 0;
 
     /**

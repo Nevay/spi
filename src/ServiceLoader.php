@@ -9,7 +9,7 @@ use function in_array;
 /**
  * Service provider loading facility.
  *
- * @template S service type
+ * @template-covariant S service type
  * @implements IteratorAggregate<class-string, S>
  *
  * @see https://docs.oracle.com/javase/8/docs/api/java/util/ServiceLoader.html
@@ -21,16 +21,18 @@ final class ServiceLoader implements IteratorAggregate {
 
     /** @var class-string<S> */
     private readonly string $service;
-    /** @var list<class-string>|null */
-    private ?array $providers = null;
-    /** @var list<S> */
+    /** @var list<class-string> */
+    private array $providers;
+    /** @var list<S|false> */
     private array $cache = [];
 
     /**
      * @param class-string<S> $service
+     * @param list<class-string> $providers
      */
-    private function __construct(string $service) {
+    private function __construct(string $service, array $providers) {
         $this->service = $service;
+        $this->providers = $providers;
     }
 
     /**
@@ -59,7 +61,7 @@ final class ServiceLoader implements IteratorAggregate {
             return;
         }
 
-        self::$mappings[$service] ??= $providers;
+        self::$mappings[$service] = $providers;
         self::$mappings[$service][] = $provider;
     }
 
@@ -71,11 +73,10 @@ final class ServiceLoader implements IteratorAggregate {
      * @return ServiceLoader<S_> service loader for the given service
      */
     public static function load(string $service): ServiceLoader {
-        return new self($service);
+        return new self($service, self::providers($service));
     }
 
     public function getIterator(): Iterator {
-        $this->providers ??= self::providers($this->service);
         return new ServiceLoaderIterator($this->service, $this->providers, $this->cache);
     }
 
@@ -85,15 +86,20 @@ final class ServiceLoader implements IteratorAggregate {
     public function reload(): void {
         unset($this->cache);
         $this->cache = [];
-        $this->providers = null;
+        $this->providers = self::providers($this->service);
     }
 
-    private static function providers(string $type): array {
-        $providers = self::$mappings[$type] ?? [];
-        if (!$providers && class_exists(GeneratedServiceProviderData::class) && GeneratedServiceProviderData::VERSION === 1) {
-            $providers = GeneratedServiceProviderData::providers($type);
+    /**
+     * @param class-string $service
+     * @return list<class-string>
+     */
+    private static function providers(string $service): array {
+        if (!isset(self::$mappings[$service])
+            && class_exists(GeneratedServiceProviderData::class)
+            && GeneratedServiceProviderData::VERSION === 1) {
+            return GeneratedServiceProviderData::providers($service);
         }
 
-        return $providers;
+        return self::$mappings[$service] ?? [];
     }
 }

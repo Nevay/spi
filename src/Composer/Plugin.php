@@ -18,15 +18,15 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
         ];
     }
 
-    public function activate(Composer $composer, IOInterface $io) {
+    public function activate(Composer $composer, IOInterface $io): void {
         // no-op
     }
 
-    public function deactivate(Composer $composer, IOInterface $io) {
+    public function deactivate(Composer $composer, IOInterface $io): void {
         // no-op
     }
 
-    public function uninstall(Composer $composer, IOInterface $io) {
+    public function uninstall(Composer $composer, IOInterface $io): void {
         // no-op
     }
 
@@ -67,11 +67,11 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
                 public const VERSION = 1;
             
                 /**
-                 * @param class-string \$type
+                 * @param class-string \$service
                  * @return list<class-string>
                  */
-                public static function providers(string \$type): array {
-                    return match (\$type) {
+                public static function providers(string \$service): array {
+                    return match (\$service) {
                         default => [],$match
                     };
                 }
