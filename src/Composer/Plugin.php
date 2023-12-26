@@ -8,9 +8,14 @@ use Composer\Plugin\PluginInterface;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
 use Composer\Util\Filesystem;
-use function array_combine;
+use function array_fill_keys;
+use function array_unique;
+use function implode;
+use function preg_match;
 
 final class Plugin implements PluginInterface, EventSubscriberInterface {
+
+    private const FQCN_REGEX = '/^\\\\?[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*(?:\\\\[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*)*$/';
 
     public static function getSubscribedEvents(): array {
         return [
@@ -35,9 +40,25 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
     public function preAutoloadDump(Event $event): void {
         $match = '';
         foreach (self::serviceProviders($event->getComposer()) as $service => $providers) {
-            $match .= "\n            \\$service::class => [";
-            foreach ($providers as $class) {
-                $match .= "\n                \\$class::class,";
+            if (!preg_match(self::FQCN_REGEX, $service)) {
+                $event->getIO()->warning(sprintf('Invalid extra.spi configuration, expected class name, got "%s" (%s)', $service, implode(', ', array_unique($providers))));
+                continue;
+            }
+            if ($service[0] !== '\\') {
+                $service = '\\' . $service;
+            }
+
+            $match .= "\n            $service::class => [";
+            foreach ($providers as $provider => $package) {
+                if (!preg_match(self::FQCN_REGEX, $provider)) {
+                    $event->getIO()->warning(sprintf('Invalid extra.spi configuration, expected class name, got "%s" for "%s" (%s)', $provider, $service, $package));
+                    continue;
+                }
+                if ($provider[0] !== '\\') {
+                    $provider = '\\' . $provider;
+                }
+
+                $match .= "\n                $provider::class, // $package";
             }
             $match .= "\n            ],";
         }
@@ -83,13 +104,13 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
         $mappings = [];
         foreach ($composer->getPackage()->getExtra()['spi'] ?? [] as $service => $providers) {
             $mappings[$service] ??= [];
-            $mappings[$service] += array_combine($providers, $providers);
+            $mappings[$service] += array_fill_keys($providers, $composer->getPackage()->getPrettyString());
         }
         foreach ($composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
             foreach ($package->getExtra()['spi'] ?? [] as $service => $providers) {
                 $providers = (array) $providers;
                 $mappings[$service] ??= [];
-                $mappings[$service] += array_combine($providers, $providers);
+                $mappings[$service] += array_fill_keys($providers, $package->getPrettyString());
             }
         }
 
