@@ -8,7 +8,7 @@ use function is_subclass_of;
 use function sprintf;
 
 /**
- * @template-covariant S service type
+ * @template-covariant S of object service type
  * @implements Iterator<class-string, S>
  *
  * @internal
@@ -19,7 +19,7 @@ final class ServiceLoaderIterator implements Iterator {
     private readonly string $service;
     /** @var list<class-string> */
     private readonly array $providers;
-    /** @var list<S|false> */
+    /** @var array<int, S|false> */
     private array $cache;
 
     /** @var int<0, max> */
@@ -28,7 +28,7 @@ final class ServiceLoaderIterator implements Iterator {
     /**
      * @param class-string<S> $service
      * @param list<class-string> $providers
-     * @param list<S|false> $cache
+     * @param array<int, S|false> $cache
      */
     public function __construct(string $service, array $providers, array &$cache) {
         $this->service = $service;

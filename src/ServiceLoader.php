@@ -9,10 +9,8 @@ use function in_array;
 /**
  * Service provider loading facility.
  *
- * @template-covariant S service type
+ * @template-covariant S of object service type
  * @implements IteratorAggregate<class-string, S>
- *
- * @see https://docs.oracle.com/javase/8/docs/api/java/util/ServiceLoader.html
  */
 final class ServiceLoader implements IteratorAggregate {
 
@@ -23,7 +21,7 @@ final class ServiceLoader implements IteratorAggregate {
     private readonly string $service;
     /** @var list<class-string> */
     private array $providers;
-    /** @var list<S|false> */
+    /** @var array<int, S|false> */
     private array $cache = [];
 
     /**
@@ -49,7 +47,7 @@ final class ServiceLoader implements IteratorAggregate {
      * }
      * ```
      *
-     * @template S_ service type
+     * @template S_ of object service type
      * @template P_ of S_ service provider
      * @param class-string<S_> $service service to provide
      * @param class-string<P_> $provider provider class, must have a public
@@ -69,7 +67,7 @@ final class ServiceLoader implements IteratorAggregate {
     /**
      * Lazy loads service providers for the given service.
      *
-     * @template S_ service type
+     * @template S_ of object service type
      * @param class-string<S_> $service service to load
      * @return ServiceLoader<S_> service loader for the given service
      */

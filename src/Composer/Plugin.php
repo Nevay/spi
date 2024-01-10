@@ -100,6 +100,9 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
         return $filesystem->normalizePath($composer->getConfig()->get('vendor-dir'));
     }
 
+    /**
+     * @return array<class-string, array<class-string, string>>
+     */
     private function serviceProviders(Composer $composer): array {
         $mappings = [];
         foreach ($composer->getPackage()->getExtra()['spi'] ?? [] as $service => $providers) {

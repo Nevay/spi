@@ -1,6 +1,6 @@
 # Service Provider Interface
 
-Service provider loading facility.
+Service provider loading facility, inspired by Javas `ServiceLoader`.
 
 ## Install
 
@@ -31,10 +31,18 @@ ServiceLoader::register('Namespace\Service', 'Namespace\Implementation');
 Make sure to allow the composer plugin to be able to load service providers.
 
 ```shell
-composer config allow-plugins.tbachert/spi
+composer config allow-plugins.tbachert/spi true
 ```
 
-### Handling invalid service configurations
+### Loading service providers
+
+```php
+foreach (ServiceLoader::load('Namespace\Service') as $provider) {
+    // ...
+}
+```
+
+#### Handling invalid service configurations
 
 ```php
 $loader = ServiceLoader::load('Namespace\Service');
