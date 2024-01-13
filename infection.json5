@@ -12,6 +12,7 @@
         "text": "infection.log",
         "html": "infection.html",
     },
+    "timeout": 1,
     "mutators": {
         "@default": true
     }

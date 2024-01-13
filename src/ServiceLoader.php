@@ -3,8 +3,11 @@ namespace Nevay\SPI;
 
 use Iterator;
 use IteratorAggregate;
+use ReflectionAttribute;
+use ReflectionClass;
 use function class_exists;
 use function in_array;
+use function interface_exists;
 
 /**
  * Service provider loading facility.
@@ -52,16 +55,22 @@ final class ServiceLoader implements IteratorAggregate {
      * @param class-string<S_> $service service to provide
      * @param class-string<P_> $provider provider class, must have a public
      *        zero-argument constructor
+     * @return bool whether the provider is available
      */
-    public static function register(string $service, string $provider): void {
+    public static function register(string $service, string $provider): bool {
         $providers = self::providers($service);
         if (in_array($provider, $providers, true)) {
-            return;
+            return true;
+        }
+        if (!self::serviceAvailable($service) || !self::providerAvailable($provider)) {
+            return false;
         }
 
         self::$mappings[$service] = $providers;
         unset($providers);
         self::$mappings[$service][] = $provider;
+
+        return true;
     }
 
     /**
@@ -100,5 +109,31 @@ final class ServiceLoader implements IteratorAggregate {
         }
 
         return self::$mappings[$service] ?? [];
+    }
+
+    /**
+     * @internal
+     */
+    public static function serviceAvailable(string $service): bool {
+        return interface_exists($service) || class_exists($service);
+    }
+
+    /**
+     * @internal
+     */
+    public static function providerAvailable(string $provider): bool {
+        if (!class_exists($provider)) {
+            return false;
+        }
+
+        $reflection = new ReflectionClass($provider);
+        /** @var ReflectionAttribute<ServiceProviderRequirement> $attribute */
+        foreach ($reflection->getAttributes(ServiceProviderRequirement::class, ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
+            if (!$attribute->newInstance()->isSatisfied()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

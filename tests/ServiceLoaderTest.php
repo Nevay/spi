@@ -3,11 +3,16 @@ namespace Nevay\SPI;
 
 use Nevay\SPI\Fixtures\Implementation1;
 use Nevay\SPI\Fixtures\Implementation2;
+use Nevay\SPI\Fixtures\ImplementationForUnavailableService;
 use Nevay\SPI\Fixtures\RequiredArgument;
 use Nevay\SPI\Fixtures\Service;
 use Nevay\SPI\Fixtures\ThrowingConstructor;
+use Nevay\SPI\Fixtures\UnavailableImplementation;
+use Nevay\SPI\Fixtures\UnavailableService;
+use Nevay\SPI\Fixtures\UnmetDependencyImplementation;
 use Nevay\SPI\Fixtures\UnrelatedImplementation;
 use Nevay\SPI\Fixtures\UnrelatedService;
+use Nevay\SPI\ServiceProviderDependency\PackageDependency;
 use PHPUnit\Framework\Attributes\BackupStaticProperties;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -16,6 +21,7 @@ use function iterator_to_array;
 #[CoversClass(ServiceLoader::class)]
 #[CoversClass(ServiceLoaderIterator::class)]
 #[CoversClass(ServiceConfigurationError::class)]
+#[CoversClass(PackageDependency::class)]
 #[BackupStaticProperties(true)]
 final class ServiceLoaderTest extends TestCase {
 
@@ -147,5 +153,29 @@ final class ServiceLoaderTest extends TestCase {
         foreach (ServiceLoader::load(Service::class) as $provider) {
             // load providers
         }
+    }
+
+    public function testServiceLoaderSucceedsOnValidProvider(): void {
+        $this->assertTrue(ServiceLoader::register(Service::class, Implementation1::class));
+    }
+
+    public function testServiceLoaderSucceedsOnRepeatedValidProvider(): void {
+        $this->assertTrue(ServiceLoader::register(Service::class, Implementation1::class));
+        $this->assertTrue(ServiceLoader::register(Service::class, Implementation1::class));
+    }
+
+    public function testServiceLoaderFailsOnUnavailableService(): void {
+        $this->assertFalse(ServiceLoader::serviceAvailable(UnavailableService::class));
+        $this->assertFalse(ServiceLoader::register(UnavailableService::class, ImplementationForUnavailableService::class));
+    }
+
+    public function testServiceLoaderFailsOnUnavailableProvider(): void {
+        $this->assertFalse(ServiceLoader::providerAvailable(UnavailableImplementation::class));
+        $this->assertFalse(ServiceLoader::register(Service::class, UnavailableImplementation::class));
+    }
+
+    public function testServiceLoaderFailsOnUnmetPackageDependency(): void {
+        $this->assertFalse(ServiceLoader::providerAvailable(UnmetDependencyImplementation::class));
+        $this->assertFalse(ServiceLoader::register(Service::class, UnmetDependencyImplementation::class));
     }
 }

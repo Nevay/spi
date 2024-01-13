@@ -8,10 +8,13 @@ use Composer\Plugin\PluginInterface;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
 use Composer\Util\Filesystem;
+use Nevay\SPI\ServiceLoader;
 use function array_fill_keys;
 use function array_unique;
+use function class_exists;
 use function implode;
 use function preg_match;
+use function sprintf;
 
 final class Plugin implements PluginInterface, EventSubscriberInterface {
 
@@ -38,12 +41,32 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
     }
 
     public function preAutoloadDump(Event $event): void {
+        $package = $event->getComposer()->getPackage();
+        $packages = $event->getComposer()->getRepositoryManager()->getLocalRepository()->getCanonicalPackages();
+        $packageMap = $event->getComposer()->getAutoloadGenerator()->buildPackageMap($event->getComposer()->getInstallationManager(), $package, $packages);
+        $map = $event->getComposer()->getAutoloadGenerator()->parseAutoloads($packageMap, $package);
+        $loader = $event->getComposer()->getAutoloadGenerator()->createLoader($map, $event->getComposer()->getConfig()->get('vendor-dir'));
+        $loader->register();
+
+        try {
+            $this->dumpGeneratedServiceProviderData($event);
+        } finally {
+            $loader->unregister();
+        }
+    }
+
+    private function dumpGeneratedServiceProviderData(Event $event): void {
         $match = '';
-        foreach (self::serviceProviders($event->getComposer()) as $service => $providers) {
+        foreach ($this->serviceProviders($event->getComposer()) as $service => $providers) {
             if (!preg_match(self::FQCN_REGEX, $service)) {
                 $event->getIO()->warning(sprintf('Invalid extra.spi configuration, expected class name, got "%s" (%s)', $service, implode(', ', array_unique($providers))));
                 continue;
             }
+            if (!ServiceLoader::serviceAvailable($service)) {
+                $event->getIO()->info(sprintf('Skipping extra.spi service "%s", service not available (%s)', $service, implode(', ', array_unique($providers))));
+                continue;
+            }
+
             if ($service[0] !== '\\') {
                 $service = '\\' . $service;
             }
@@ -54,6 +77,15 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
                     $event->getIO()->warning(sprintf('Invalid extra.spi configuration, expected class name, got "%s" for "%s" (%s)', $provider, $service, $package));
                     continue;
                 }
+                if (!class_exists($provider)) {
+                    $event->getIO()->warning(sprintf('Invalid extra.spi configuration, provider class "%s" for "%s" does not exist (%s)', $provider, $service, $package));
+                    continue;
+                }
+                if (!ServiceLoader::providerAvailable($provider)) {
+                    $event->getIO()->info(sprintf('Skipping extra.spi provider "%s" for "%s", provider not available (%s)', $provider, $service, $package));
+                    continue;
+                }
+
                 if ($provider[0] !== '\\') {
                     $provider = '\\' . $provider;
                 }
