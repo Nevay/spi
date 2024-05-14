@@ -58,16 +58,13 @@ final class ServiceLoader implements IteratorAggregate {
      * @return bool whether the provider is available
      */
     public static function register(string $service, string $provider): bool {
-        $providers = self::providers($service);
-        if (in_array($provider, $providers, true)) {
+        if (in_array($provider, self::providers($service), true)) {
             return true;
         }
         if (!self::serviceAvailable($service) || !self::providerAvailable($provider)) {
             return false;
         }
 
-        self::$mappings[$service] = $providers;
-        unset($providers);
         self::$mappings[$service][] = $provider;
 
         return true;
@@ -102,13 +99,15 @@ final class ServiceLoader implements IteratorAggregate {
      * @return list<class-string>
      */
     private static function providers(string $service): array {
-        if (!isset(self::$mappings[$service])
-            && class_exists(GeneratedServiceProviderData::class)
-            && GeneratedServiceProviderData::VERSION === 1) {
-            return GeneratedServiceProviderData::providers($service);
+        if (($providers = self::$mappings[$service] ?? null) !== null) {
+            return $providers;
         }
 
-        return self::$mappings[$service] ?? [];
+        $providers = class_exists(GeneratedServiceProviderData::class) && GeneratedServiceProviderData::VERSION === 1
+            ? GeneratedServiceProviderData::providers($service)
+            : [];
+
+        return self::$mappings[$service] ??= $providers;
     }
 
     /**
@@ -121,7 +120,7 @@ final class ServiceLoader implements IteratorAggregate {
     /**
      * @internal
      */
-    public static function providerAvailable(string $provider): bool {
+    public static function providerAvailable(string $provider, bool $skipRuntimeValidatedRequirements = false): bool {
         if (!class_exists($provider)) {
             return false;
         }
@@ -129,7 +128,11 @@ final class ServiceLoader implements IteratorAggregate {
         $reflection = new ReflectionClass($provider);
         /** @var ReflectionAttribute<ServiceProviderRequirement> $attribute */
         foreach ($reflection->getAttributes(ServiceProviderRequirement::class, ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
-            if (!$attribute->newInstance()->isSatisfied()) {
+            $requirement = $attribute->newInstance();
+            if ($skipRuntimeValidatedRequirements && $requirement instanceof ServiceProviderRequirementRuntimeValidated) {
+                continue;
+            }
+            if (!$requirement->isSatisfied()) {
                 return false;
             }
         }

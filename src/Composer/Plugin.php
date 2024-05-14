@@ -9,12 +9,17 @@ use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
 use Composer\Util\Filesystem;
 use Nevay\SPI\ServiceLoader;
+use Nevay\SPI\ServiceProviderRequirementRuntimeValidated;
+use ReflectionAttribute;
+use ReflectionClass;
 use function array_fill_keys;
 use function array_unique;
 use function class_exists;
 use function implode;
+use function is_string;
 use function preg_match;
 use function sprintf;
+use function var_export;
 
 final class Plugin implements PluginInterface, EventSubscriberInterface {
 
@@ -81,7 +86,7 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
                     $event->getIO()->info(sprintf('Skipping extra.spi configuration, provider class "%s" for "%s" does not exist (%s)', $provider, $service, $package));
                     continue;
                 }
-                if (!ServiceLoader::providerAvailable($provider)) {
+                if (!ServiceLoader::providerAvailable($provider, skipRuntimeValidatedRequirements: true)) {
                     $event->getIO()->info(sprintf('Skipping extra.spi provider "%s" for "%s", provider not available (%s)', $provider, $service, $package));
                     continue;
                 }
@@ -90,7 +95,13 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
                     $provider = '\\' . $provider;
                 }
 
-                $match .= "\n                $provider::class, // $package";
+                if ($condition = self::providerRuntimeValidatedRequirements($provider)) {
+                    $match .= "\n                ...(($condition) ? [";
+                    $match .= "\n                $provider::class, // $package";
+                    $match .= "\n                ] : []),";
+                } else {
+                    $match .= "\n                $provider::class, // $package";
+                }
             }
             $match .= "\n            ],";
         }
@@ -126,6 +137,39 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
         $autoload = $package->getAutoload();
         $autoload['classmap'][] = $vendorDir . '/composer/GeneratedServiceProviderData.php';
         $package->setAutoload($autoload);
+    }
+
+    private static function providerRuntimeValidatedRequirements(string $provider): ?string {
+        // The current implementation is suboptimal if multiple runtime validated requirements are specified
+        // - should check all hashes of not satisfied requirements before calling ::isSatisfied()
+        // - should deduplicate requirements
+
+        $condition = var_export(true, true);
+        /** @var ReflectionAttribute<ServiceProviderRequirementRuntimeValidated> $attribute */
+        foreach ((new ReflectionClass($provider))->getAttributes(ServiceProviderRequirementRuntimeValidated::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
+            $requirement = $attribute->newInstance();
+            $class = '\\' . $requirement::class;
+            $args = '';
+            foreach ($attribute->getArguments() as $key => $value) {
+                $args and $args .= ', ';
+                if (is_string($key)) {
+                    $args .= $key;
+                    $args .= ': ';
+                }
+                $args .= var_export($value, true);
+            }
+
+            $hash = var_export($requirement->hash(), true);
+            $condition .= $requirement->isSatisfied()
+                ? /** @lang PHP */ " && ((\$r = new $class($args))->hash() === $hash || \$r->isSatisfied())"
+                : /** @lang PHP */ " && ((\$r = new $class($args))->hash() !== $hash && \$r->isSatisfied())";
+        }
+
+        if (!isset($requirement)) {
+            return null;
+        }
+
+        return $condition;
     }
 
     private function vendorDir(Composer $composer, Filesystem $filesystem): string {

@@ -3,14 +3,14 @@ namespace Nevay\SPI\ServiceProviderDependency;
 
 use Attribute;
 use Composer\Semver\VersionParser;
-use Nevay\SPI\ServiceProviderRequirement;
+use Nevay\SPI\ServiceProviderRequirementRuntimeValidated;
 use function phpversion;
 
 /**
  * Specifies extensions required by a service provider.
  */
 #[Attribute(Attribute::TARGET_CLASS | Attribute::IS_REPEATABLE)]
-final class ExtensionDependency implements ServiceProviderRequirement {
+final class ExtensionDependency implements ServiceProviderRequirementRuntimeValidated {
 
     public function __construct(
         private readonly string $extension,
@@ -27,5 +27,9 @@ final class ExtensionDependency implements ServiceProviderRequirement {
         $provided = $parser->parseConstraints($version);
 
         return $provided->matches($constraint);
+    }
+
+    public function hash(): string|false {
+        return phpversion($this->extension);
     }
 }
