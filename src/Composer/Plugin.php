@@ -78,7 +78,7 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
                     continue;
                 }
                 if (!class_exists($provider)) {
-                    $event->getIO()->warning(sprintf('Invalid extra.spi configuration, provider class "%s" for "%s" does not exist (%s)', $provider, $service, $package));
+                    $event->getIO()->info(sprintf('Skipping extra.spi configuration, provider class "%s" for "%s" does not exist (%s)', $provider, $service, $package));
                     continue;
                 }
                 if (!ServiceLoader::providerAvailable($provider)) {
