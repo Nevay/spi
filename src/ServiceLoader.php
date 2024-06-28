@@ -1,6 +1,7 @@
 <?php declare(strict_types=1);
 namespace Nevay\SPI;
 
+use Closure;
 use Iterator;
 use IteratorAggregate;
 use ReflectionAttribute;
@@ -19,6 +20,7 @@ final class ServiceLoader implements IteratorAggregate {
 
     /** @var array<class-string, list<class-string>> */
     private static array $mappings = [];
+    private static bool $skipChecks = false;
 
     /** @var class-string<S> */
     private readonly string $service;
@@ -61,7 +63,7 @@ final class ServiceLoader implements IteratorAggregate {
         if (in_array($provider, self::providers($service), true)) {
             return true;
         }
-        if (!self::serviceAvailable($service) || !self::providerAvailable($provider)) {
+        if (!self::$skipChecks && (!self::serviceAvailable($service) || !self::providerAvailable($provider))) {
             return false;
         }
 
@@ -138,5 +140,26 @@ final class ServiceLoader implements IteratorAggregate {
         }
 
         return true;
+    }
+
+    /**
+     * @return array<class-string, list<class-string>>
+     *
+     * @internal
+     */
+    public static function collectProviders(Closure $closure, mixed ...$args): array {
+        $skipChecks = self::$skipChecks;
+        $mappings = self::$mappings;
+        self::$skipChecks = true;
+        self::$mappings = [];
+
+        try {
+            $closure(...$args);
+
+            return self::$mappings;
+        } finally {
+            self::$skipChecks = $skipChecks;
+            self::$mappings = $mappings;
+        }
     }
 }

@@ -4,22 +4,29 @@ namespace Nevay\SPI\Composer;
 use Composer\Composer;
 use Composer\EventDispatcher\EventSubscriberInterface;
 use Composer\IO\IOInterface;
+use Composer\Package\Package;
+use Composer\Package\PackageInterface;
 use Composer\Plugin\PluginInterface;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
 use Composer\Util\Filesystem;
+use Composer\Util\Platform;
 use Nevay\SPI\ServiceLoader;
 use Nevay\SPI\ServiceProviderRequirementRuntimeValidated;
 use ReflectionAttribute;
 use ReflectionClass;
+use function array_diff;
 use function array_fill_keys;
 use function array_unique;
 use function class_exists;
 use function implode;
 use function is_string;
+use function json_encode;
 use function preg_match;
 use function sprintf;
 use function var_export;
+use const JSON_UNESCAPED_SLASHES;
+use const JSON_UNESCAPED_UNICODE;
 
 final class Plugin implements PluginInterface, EventSubscriberInterface {
 
@@ -62,7 +69,7 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
 
     private function dumpGeneratedServiceProviderData(Event $event): void {
         $match = '';
-        foreach ($this->serviceProviders($event->getComposer()) as $service => $providers) {
+        foreach ($this->serviceProviders($event->getComposer(), $event->getIO()) as $service => $providers) {
             if (!preg_match(self::FQCN_REGEX, $service)) {
                 $event->getIO()->warning(sprintf('Invalid extra.spi configuration, expected class name, got "%s" (%s)', $service, implode(', ', array_unique($providers))));
                 continue;
@@ -146,7 +153,7 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
 
         $condition = var_export(true, true);
         /** @var ReflectionAttribute<ServiceProviderRequirementRuntimeValidated> $attribute */
-        foreach ((new ReflectionClass($provider))->getAttributes(ServiceProviderRequirementRuntimeValidated::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
+        foreach ((new ReflectionClass($provider))->getAttributes(ServiceProviderRequirementRuntimeValidated::class, ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
             $requirement = $attribute->newInstance();
             $class = '\\' . $requirement::class;
             $args = '';
@@ -179,20 +186,60 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
     /**
      * @return array<class-string, array<class-string, string>>
      */
-    private function serviceProviders(Composer $composer): array {
+    private function serviceProviders(Composer $composer, IOInterface $io): array {
         $mappings = [];
-        foreach ($composer->getPackage()->getExtra()['spi'] ?? [] as $service => $providers) {
-            $mappings[$service] ??= [];
-            $mappings[$service] += array_fill_keys($providers, $composer->getPackage()->getPrettyString());
-        }
+        $this->serviceProvidersFromExtraSpi($composer->getPackage(), $mappings);
+        $this->serviceProvidersFromAutoloadFiles($composer->getPackage(), $mappings, Platform::getCwd(), $io);
         foreach ($composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
-            foreach ($package->getExtra()['spi'] ?? [] as $service => $providers) {
-                $providers = (array) $providers;
-                $mappings[$service] ??= [];
-                $mappings[$service] += array_fill_keys($providers, $package->getPrettyString());
-            }
+            $this->serviceProvidersFromExtraSpi($package, $mappings);
+            $this->serviceProvidersFromAutoloadFiles($package, $mappings, $composer->getInstallationManager()->getInstallPath($package), $io);
         }
 
         return $mappings;
+    }
+
+    private function serviceProvidersFromExtraSpi(PackageInterface $package, array &$mappings): void {
+        foreach ($package->getExtra()['spi'] ?? [] as $service => $providers) {
+            $providers = (array) $providers;
+            $mappings[$service] ??= [];
+            $mappings[$service] += array_fill_keys($providers, $package->getPrettyString() . ' (extra.spi)');
+        }
+    }
+
+    private function serviceProvidersFromAutoloadFiles(PackageInterface $package, array &$mappings, string $installPath, IOInterface $io): void {
+        $autoloadFiles = $package->getAutoload()['files'] ?? [];
+        $spiAutoloadFiles = $package->getExtra()['spi-config']['autoload-files'] ?? false ?: [];
+        $spiPruneAutoloadFiles = $package->getExtra()['spi-config']['prune-autoload-files'] ?? null;
+
+        if ($spiAutoloadFiles === true) {
+            $spiAutoloadFiles = $autoloadFiles;
+        }
+        if ($spiPruneAutoloadFiles === true) {
+            $spiPruneAutoloadFiles = $spiAutoloadFiles;
+        }
+
+        $includeFile = (static fn(string $file) => require $file)->bindTo(null, null);
+        foreach ($spiAutoloadFiles as $index => $file) {
+            $io->debug(sprintf('Loading service providers from "%s" (%s)', $file, $package->getPrettyString()));
+
+            if (!$includedProviders = ServiceLoader::collectProviders($includeFile, $installPath . '/' . $file)) {
+                unset($spiAutoloadFiles[$index]);
+                continue;
+            }
+
+            foreach ($includedProviders as $service => $providers) {
+                $mappings[$service] ??= [];
+                $mappings[$service] += array_fill_keys($providers, $package->getPrettyString() . ' (' . json_encode($file, flags: JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ')');
+            }
+        }
+
+        $spiPruneAutoloadFiles ??= $spiAutoloadFiles;
+        if ($spiPruneAutoloadFiles && $autoloadFiles && $package instanceof Package) {
+            $io->debug(sprintf('Pruning autoload.files (%s): %s', $package->getPrettyString(), implode(', ', $spiPruneAutoloadFiles)));
+
+            $autoload = $package->getAutoload();
+            $autoload['files'] = array_diff($autoloadFiles, $spiPruneAutoloadFiles);
+            $package->setAutoload($autoload);
+        }
     }
 }
