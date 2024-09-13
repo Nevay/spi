@@ -191,6 +191,9 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
         $this->serviceProvidersFromExtraSpi($composer->getPackage(), $mappings);
         $this->serviceProvidersFromAutoloadFiles($composer->getPackage(), $mappings, Platform::getCwd(), $io);
         foreach ($composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
+            if ($composer->getInstallationManager()->getInstallPath($package) === null) {
+                continue;
+            }
             $this->serviceProvidersFromExtraSpi($package, $mappings);
             $this->serviceProvidersFromAutoloadFiles($package, $mappings, $composer->getInstallationManager()->getInstallPath($package), $io);
         }
