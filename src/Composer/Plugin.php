@@ -15,14 +15,17 @@ use Nevay\SPI\ServiceLoader;
 use Nevay\SPI\ServiceProviderRequirementRuntimeValidated;
 use ReflectionAttribute;
 use ReflectionClass;
+use RuntimeException;
 use function array_diff;
 use function array_fill_keys;
 use function array_unique;
 use function class_exists;
+use function getcwd;
 use function implode;
 use function is_string;
 use function json_encode;
 use function preg_match;
+use function realpath;
 use function sprintf;
 use function var_export;
 use const JSON_UNESCAPED_SLASHES;
@@ -189,7 +192,7 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
     private function serviceProviders(Composer $composer, IOInterface $io): array {
         $mappings = [];
         $this->serviceProvidersFromExtraSpi($composer->getPackage(), $mappings);
-        $this->serviceProvidersFromAutoloadFiles($composer->getPackage(), $mappings, Platform::getCwd(), $io);
+        $this->serviceProvidersFromAutoloadFiles($composer->getPackage(), $mappings, self::getCwd(), $io);
         foreach ($composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
             $this->serviceProvidersFromExtraSpi($package, $mappings);
 
@@ -244,5 +247,22 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
             $autoload['files'] = array_diff($autoloadFiles, $spiPruneAutoloadFiles);
             $package->setAutoload($autoload);
         }
+    }
+
+    /**
+     * @see Platform::getCwd()
+     */
+    private static function getCwd(): string {
+        $cwd = getcwd();
+
+        if ($cwd === false) {
+            $cwd = realpath('');
+        }
+
+        if ($cwd === false) {
+            throw new RuntimeException('Could not determine the current working directory');
+        }
+
+        return $cwd;
     }
 }
