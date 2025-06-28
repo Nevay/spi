@@ -27,7 +27,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "0.2.x-dev"
+            "dev-main": "1.0.x-dev"
         },
         "class": "Nevay\\SPI\\Composer\\Plugin",
         "plugin-optional": true
