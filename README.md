@@ -2,6 +2,20 @@
 
 Service provider loading facility, inspired by Javas `ServiceLoader`.
 
+## Usage in OpenTelemetry PHP
+
+If you are seeing the following message when running `composer` commands, you have probably installed the
+[`OpenTelemetry PHP SDK`](https://github.com/opentelemetry-php/sdk).
+
+```
+tbachert/spi contains a Composer plugin which is currently not in your allow-plugins config. See https://getcomposer.org/allow-plugins
+Do you trust "tbachert/spi" to execute code and wish to enable it now? (writes "allow-plugins" to composer.json) [y,n,d,?] 
+```
+
+The OpenTelemetry SDK uses this plugin to provide its extensible configuration format. If you are not using
+[SDK autoconfiguration](https://opentelemetry.io/docs/languages/php/sdk/#autoloading), you can most likely disable this
+plugin.
+
 ## Install
 
 ```shell
