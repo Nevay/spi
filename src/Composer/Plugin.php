@@ -1,7 +1,6 @@
 <?php declare(strict_types=1);
 namespace Nevay\SPI\Composer;
 
-use Composer\Autoload\ClassLoader;
 use Composer\Composer;
 use Composer\EventDispatcher\EventSubscriberInterface;
 use Composer\IO\IOInterface;
@@ -62,22 +61,13 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
         $packages = $event->getComposer()->getRepositoryManager()->getLocalRepository()->getCanonicalPackages();
         $packageMap = $event->getComposer()->getAutoloadGenerator()->buildPackageMap($event->getComposer()->getInstallationManager(), $package, $packages);
         $map = $event->getComposer()->getAutoloadGenerator()->parseAutoloads($packageMap, $package);
-        $loader = $event->getComposer()->getAutoloadGenerator()->createLoader($map, $event->getComposer()->getConfig()->get('vendor-dir'));
+        $loader = $event->getComposer()->getAutoloadGenerator()->createLoader($map);
 
-        $registeredLoaders = ClassLoader::getRegisteredLoaders();
         $loader->register();
-
         try {
             $this->dumpGeneratedServiceProviderData($event);
         } finally {
             $loader->unregister();
-
-            // Workaround for $registeredLoaders being modified after registering and unregistering an already present vendor-dir
-            // https://github.com/Nevay/spi/issues/6
-            foreach ($registeredLoaders as $loader) {
-                $loader->unregister();
-                $loader->register();
-            }
         }
     }
 
