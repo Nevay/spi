@@ -15,10 +15,13 @@ final class PackageDependency implements ServiceProviderRequirement {
     /**
      * @param string $package composer package
      * @param string $version version constraint
+     *
+     * @noinspection PhpPropertyOnlyWrittenInspection
      */
     public function __construct(
         private readonly string $package,
         private readonly string $version,
+        private readonly bool $sealed = false,
     ) {}
 
     public function isSatisfied(): bool {

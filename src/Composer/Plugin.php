@@ -1,11 +1,14 @@
 <?php declare(strict_types=1);
 namespace Nevay\SPI\Composer;
 
+use Closure;
 use Composer\Composer;
 use Composer\EventDispatcher\EventSubscriberInterface;
 use Composer\IO\IOInterface;
 use Composer\Package\Package;
 use Composer\Package\PackageInterface;
+use Composer\Plugin\Capability\CommandProvider;
+use Composer\Plugin\Capable;
 use Composer\Plugin\PluginInterface;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
@@ -31,13 +34,19 @@ use function var_export;
 use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 
-final class Plugin implements PluginInterface, EventSubscriberInterface {
+final class Plugin implements PluginInterface, EventSubscriberInterface, Capable {
 
     private const FQCN_REGEX = '/^\\\\?[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*(?:\\\\[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*)*$/';
 
     public static function getSubscribedEvents(): array {
         return [
             ScriptEvents::PRE_AUTOLOAD_DUMP => 'preAutoloadDump',
+        ];
+    }
+
+    public function getCapabilities(): array {
+        return [
+            CommandProvider::class => PluginCommandProvider::class,
         ];
     }
 
@@ -56,16 +65,23 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
     }
 
     public function preAutoloadDump(Event $event): void {
+        self::runWithAutoloader($event->getComposer(), $this->dumpGeneratedServiceProviderData(...), $event);
+    }
+
+    /**
+     * @internal
+     */
+    public static function runWithAutoloader(Composer $composer, Closure $closure, mixed ...$args): mixed {
         // ClassLoader creation based on EventDispatcher::getScriptListeners()
-        $package = $event->getComposer()->getPackage();
-        $packages = $event->getComposer()->getRepositoryManager()->getLocalRepository()->getCanonicalPackages();
-        $packageMap = $event->getComposer()->getAutoloadGenerator()->buildPackageMap($event->getComposer()->getInstallationManager(), $package, $packages);
-        $map = $event->getComposer()->getAutoloadGenerator()->parseAutoloads($packageMap, $package);
-        $loader = $event->getComposer()->getAutoloadGenerator()->createLoader($map);
+        $package = $composer->getPackage();
+        $packages = $composer->getRepositoryManager()->getLocalRepository()->getCanonicalPackages();
+        $packageMap = $composer->getAutoloadGenerator()->buildPackageMap($composer->getInstallationManager(), $package, $packages);
+        $map = $composer->getAutoloadGenerator()->parseAutoloads($packageMap, $package);
+        $loader = $composer->getAutoloadGenerator()->createLoader($map);
 
         $loader->register();
         try {
-            $this->dumpGeneratedServiceProviderData($event);
+            return ($closure)(...$args);
         } finally {
             $loader->unregister();
         }
@@ -73,7 +89,7 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
 
     private function dumpGeneratedServiceProviderData(Event $event): void {
         $match = '';
-        foreach ($this->serviceProviders($event->getComposer(), $event->getIO()) as $service => $providers) {
+        foreach (self::serviceProviders($event->getComposer(), $event->getIO()) as $service => $providers) {
             if (!preg_match(self::FQCN_REGEX, $service)) {
                 $event->getIO()->warning(sprintf('Invalid extra.spi configuration, expected class name, got "%s" (%s)', $service, implode(', ', array_unique($providers))));
                 continue;
@@ -189,23 +205,28 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
 
     /**
      * @return array<class-string, array<class-string, string>>
+     *
+     * @internal
      */
-    private function serviceProviders(Composer $composer, IOInterface $io): array {
+    public static function serviceProviders(Composer $composer, IOInterface $io, bool $includeDependencies = true): array {
         $mappings = [];
-        $this->serviceProvidersFromExtraSpi($composer->getPackage(), $mappings);
-        $this->serviceProvidersFromAutoloadFiles($composer->getPackage(), $mappings, self::getCwd(), $io);
-        foreach ($composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
-            $this->serviceProvidersFromExtraSpi($package, $mappings);
+        self::serviceProvidersFromExtraSpi($composer->getPackage(), $mappings);
+        self::serviceProvidersFromAutoloadFiles($composer->getPackage(), $mappings, self::getCwd(), $io);
 
-            if (($installPath = $composer->getInstallationManager()->getInstallPath($package)) !== null) {
-                $this->serviceProvidersFromAutoloadFiles($package, $mappings, $installPath, $io);
+        if ($includeDependencies) {
+            foreach ($composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
+                self::serviceProvidersFromExtraSpi($package, $mappings);
+
+                if (($installPath = $composer->getInstallationManager()->getInstallPath($package)) !== null) {
+                    self::serviceProvidersFromAutoloadFiles($package, $mappings, $installPath, $io);
+                }
             }
         }
 
         return $mappings;
     }
 
-    private function serviceProvidersFromExtraSpi(PackageInterface $package, array &$mappings): void {
+    private static function serviceProvidersFromExtraSpi(PackageInterface $package, array &$mappings): void {
         foreach ($package->getExtra()['spi'] ?? [] as $service => $providers) {
             $providers = (array) $providers;
             $mappings[$service] ??= [];
@@ -213,7 +234,7 @@ final class Plugin implements PluginInterface, EventSubscriberInterface {
         }
     }
 
-    private function serviceProvidersFromAutoloadFiles(PackageInterface $package, array &$mappings, string $installPath, IOInterface $io): void {
+    private static function serviceProvidersFromAutoloadFiles(PackageInterface $package, array &$mappings, string $installPath, IOInterface $io): void {
         $autoloadFiles = $package->getAutoload()['files'] ?? [];
         $spiAutoloadFiles = $package->getExtra()['spi-config']['autoload-files'] ?? false ?: [];
         $spiPruneAutoloadFiles = $package->getExtra()['spi-config']['prune-autoload-files'] ?? null;
